@@ -1,0 +1,67 @@
+<Taglist>
+
+<Devicetags>
+<ModuleID>51EE5C6E7667600</ModuleID>
+<Controls>
+
+	<Tagname>CH1_diff_gain</Tagname>
+	<Tagname>CH2_diff_gain</Tagname>
+	<Tagname>CH3_gain</Tagname>
+	<Tagname>CH4_gain</Tagname>
+	<Tagname>CHINT1_gain</Tagname>
+	<Tagname>CHINT2_gain</Tagname>
+</Controls>
+<Indicators>
+
+	<Tagname>CH1_diff_in</Tagname>
+	<Tagname>CH2_diff_in</Tagname>
+	<Tagname>CH3_in</Tagname>
+	<Tagname>CH4_in</Tagname>
+	<Tagname>CHINT1_in</Tagname>
+	<Tagname>CHINT2_in</Tagname>
+</Indicators>
+</Devicetags>
+<Devicetags>
+<ModuleID>51F5BA63D550AC0</ModuleID>
+<Controls>
+
+	<Tagname>Microstep</Tagname>
+	<Tagname>Pistonpos_intake</Tagname>
+	<Tagname>Pistonpos_dispense</Tagname>
+	<Tagname>Speed_intake</Tagname>
+	<Tagname>Speed_dispense</Tagname>
+	<Tagname>Valvepos_intake</Tagname>
+	<Tagname>Valvepos_dispense</Tagname>
+	<Tagname>Mode</Tagname>
+</Controls>
+<Indicators>
+
+	<Tagname>Pistonpos</Tagname>
+	<Tagname>Valvepos</Tagname>
+	<Tagname>Error</Tagname>
+	<Tagname>Microstepmode</Tagname>
+	<Tagname>Status</Tagname>
+</Indicators>
+</Devicetags>
+<Devicetags>
+<ModuleID>5205577CB8B2A80</ModuleID>
+<Controls>
+
+	<Tagname>Relay_set</Tagname>
+</Controls>
+<Indicators>
+
+</Indicators>
+</Devicetags>
+<Devicetags>
+<ModuleID>5208722EF6DBD80</ModuleID>
+<Controls>
+
+</Controls>
+<Indicators>
+
+	<Tagname>Status</Tagname>
+	<Tagname>Optical_density</Tagname>
+</Indicators>
+</Devicetags>
+</Taglist>

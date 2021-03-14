@@ -1,0 +1,22 @@
+<Modulelist>
+<Instrument>spflow</Instrument>
+<InstrumentID>508B4C3EDB57040</InstrumentID>
+<Firmware>1.0.0</Firmware>
+<Module>
+	<ModuleID>51EE5C6E7667600</ModuleID>
+	<UniqueID>adc90</UniqueID>
+	<Address>5</Address>
+</Module><Module>
+	<ModuleID>51F5BA63D550AC0</ModuleID>
+	<UniqueID>pumpxlp6000</UniqueID>
+	<Address>1</Address>
+</Module><Module>
+	<ModuleID>5205577CB8B2A80</ModuleID>
+	<UniqueID>relay90</UniqueID>
+	<Address>5</Address>
+</Module><Module>
+	<ModuleID>5208722EF6DBD80</ModuleID>
+	<UniqueID>ODCube</UniqueID>
+	<Address>0</Address>
+</Module>
+</Modulelist>
