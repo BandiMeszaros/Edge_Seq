@@ -1,7 +1,7 @@
-import Pyro4 # for python remote objects
-import rticonnextdds_connector as rti # for DDS connection
-import time # for the sleep method
-import threading # for running mutliple threads
+import Pyro4# for python remote objects
+import rticonnextdds_connector as rti# for DDS connection
+import time# for the sleep method
+import threading# for running mutliple threads
 from xmltodict import parse
 import logging
 import queue
@@ -18,6 +18,7 @@ def get_local_IP():
                                                                     for i in '01' for j in ['0', '1', '254', '255']})
 
     return list(ip)[0]
+
 
 class MSCD_mode(enum.Enum):
 
@@ -69,23 +70,6 @@ class moduleNotFoundError(Exception):
     def __str__(self):
         return f"module {self.moduleID} not found in {self.module_list_file}"
 
-
-class directCommandError(Exception):
-    def __init__(self,task, command):
-
-        self.command = command
-        self.task = task
-        self.occured = datetime.datetime.now()
-
-
-    def __str__(self):
-        return f"Direct control command didn't finnish in time\n" \
-               f"command: {self.command.transactionID}\n" \
-               f"task start trigger: {self.task.start_trigger}\n"\
-               f"moduleID {command.moduleID}\n" \
-               f"Error happend {self.occured}"
-
-
 class ddsTopicError(Exception):
 
     def __init__(self, module, command_xml):
@@ -100,7 +84,7 @@ class ddsTopicError(Exception):
 class Edge_Sequencer:
 
     def __init__(self, module_list_xml=MODULELIST, config_name_sub=CONFIG_SUB, config_name_pub=CONFIG_PUB,
-                 command_xml=COMMANDXML, flow_xml=FLOWXML, es_fct_topic=ES_FCT, timeout_direct_control = DC_TIMEOUT):
+                 command_xml=COMMANDXML, flow_xml=FLOWXML, es_fct_topic=ES_FCT):
 
         self._module_list_xml = module_list_xml
         self._module_list_dict = self._parse_module_xml(module_list_xml)
@@ -112,7 +96,6 @@ class Edge_Sequencer:
         self._command_xml = command_xml
         self._flow_xml = flow_xml
         self._es_fct_topic = es_fct_topic
-        self._directControl_timeout = timeout_direct_control
         #connectors:
 
         self._fct_read_connector = rti.Connector(config_name=config_name_sub, url=flow_xml)
@@ -156,13 +139,9 @@ class Edge_Sequencer:
     def get_command_xml(self):
         return self._command_xml
 
-    def get_direct_control_timeout(self):
-        return self._directControl_timeout
-
     def get_es_fct_topic(self):
         return self._es_fct_topic
 
-    #todo connector getters
     def get_fct_read_connector(self):
         return self._fct_read_connector
 
@@ -179,9 +158,7 @@ class Edge_Sequencer:
         self._msct_write_connector.close()
         logging.debug(f"{datetime.datetime.now()}-> Connectors have been closed....")
 
-
 @Pyro4.expose
-@Pyro4.behavior(instance_mode="single")
 class Session(Edge_Sequencer):
 
     def __init__(self, tasklist_xml: str):
@@ -189,10 +166,6 @@ class Session(Edge_Sequencer):
 
         self.start_up_barrier = threading.Barrier(2)
         self.start_up_barrier.reset()
-
-        #todo probably deprecated
-        #self.wait_for_read_ack_msct = threading.Event()
-        #self.wait_for_read_ack_msct.clear()
 
         self.xml_task_dict = self._parse_xml_to_dict(tasklist_xml)
         self.tasks = []
@@ -203,16 +176,10 @@ class Session(Edge_Sequencer):
 
         self.trigger_queue = queue.Queue()
         self.queue_lock = threading.Lock()
-        self.producer_thread = threading.Thread(name="producer_ESeq",
-                                                target=self._producer_thread_target,
-                                                args=())
+        self.producer_thread = threading.Thread(name="producer_ESeq", target=self._producer_thread_target)
         self.consumer_thread = threading.Thread(target=self._consumer_thread_target, name="consumer_ESeq")
         self.fct_read_write_event = threading.Event()
         self.running_tasks_lock = threading.Lock()
-        self.immadiate_stop_flag = threading.Event()
-        self.immadiate_stop_flag.set()
-        #self.consumer_producer_flag = threading.Event()
-        #self.consumer_producer_flag.clear()
         self._kill_all_threads = threading.Event()
         self._kill_all_threads.set()
         self.pyro_thread = threading.Thread(target=self._expose_session, args=(), name="pyro_thread")
@@ -220,18 +187,21 @@ class Session(Edge_Sequencer):
 
     def _expose_session(self):
 
-        #daemon = Pyro4.Daemon(host=get_local_IP())
-        #ns = Pyro4.Proxy('PYRO:Pyro.NameServer@192.168.1.187:9090')
+        self.pyro_daemon = Pyro4.Daemon(host=SEQ_IP)
+        ns = Pyro4.Proxy(PYRO_NS_IP)
 
-        #for test purposses
-        daemon = Pyro4.Daemon(host="localhost")
-        ns = Pyro4.locateNS()
-
-        uri = daemon.register(self)
+        uri = self.pyro_daemon.register(self)
+        logging.debug(f"{datetime.datetime.now()}--> uri of the pyro server is {uri}")
         ns.register("Sequencer.Session", uri)
         self.start_up_barrier.wait()
         logging.debug(f"{datetime.datetime.now()}-> Pyro deamon is running")
-        daemon.requestLoop()
+        self.pyro_daemon.requestLoop()
+
+    def _close_pyro_connection(self):
+        """Terminates the running pyro requestloop"""
+        logging.debug(f"{datetime.datetime.now()}--> shuting down pyro server....")
+        self.pyro_daemon.shutdown()
+        logging.debug(f"{datetime.datetime.now()}--> server stopped...")
 
     def _task_create_from_dict(self):
         """itterates over the self.xml_data_dict and creates the tasks of the Session"""
@@ -257,6 +227,8 @@ class Session(Edge_Sequencer):
         read_input = self.read_one_dds_fct(es_fct_topic, flow_xml)
         if read_input != -1:
             return read_input
+        else:
+            return 0
 
     def _update_queue_with_new_trigger(self, trigger):
         """puts new items into the list of trigger queue"""
@@ -268,14 +240,15 @@ class Session(Edge_Sequencer):
         """runs the _read_fct method, and parses the information in it. Updates the trigger_queue if needed"""
         while self._kill_all_threads.is_set():
 
-            self.immadiate_stop_flag.wait()
             read_data = self._read_fct()
-            if read_data["Process_status"] == ProcessStatus.trigger.value:
-                if read_data['triggerID'] not in list(self.trigger_queue.queue):
-                    self._update_queue_with_new_trigger(read_data["triggerID"])
-                    logging.debug(f"{datetime.datetime.now()}-> Producer updates queue with:"
-                                  f" {read_data['triggerID']}")
+            if read_data:
+                if read_data["Process_status"] == ProcessStatus.trigger.value:
+                    if read_data['triggerID'] not in list(self.trigger_queue.queue):
+                        self._update_queue_with_new_trigger(read_data["triggerID"])
+                        logging.debug(f"{datetime.datetime.now()}-> Producer updates queue with:"
+                                      f" {read_data['triggerID']}")
 
+        logging.debug(f"{datetime.datetime.now()}-> producer thread is quiting....")
         return 0
 
     def _consumer_thread_target(self):
@@ -285,10 +258,8 @@ class Session(Edge_Sequencer):
         command_xml = self.get_command_xml()
         while self._kill_all_threads.is_set():
 
-            self.immadiate_stop_flag.wait()
             if not self.trigger_queue.empty():
                 with self.queue_lock:
-                    #self.consumer_producer_flag.set()
                     trigger = self.trigger_queue.get()
                     logging.debug(f"{datetime.datetime.now()}-> consumer has a trigger: {trigger}")
 
@@ -311,6 +282,7 @@ class Session(Edge_Sequencer):
                 logging.debug(f"{datetime.datetime.now()}-> finnished tasks:{self.finished_tasks}")
                 logging.debug(f"{datetime.datetime.now()}-> tasks: {self.tasks}")
                 logging.debug(f"{datetime.datetime.now()}-> running tasks {self.running_tasks}")
+        logging.debug(f"{datetime.datetime.now()}-> consumer thread is quiting....")
         return 0
 
     def _get_task_triggers(self, task_type: str) -> list:
@@ -369,6 +341,7 @@ class Session(Edge_Sequencer):
         sequencer_instrumentID = self.get_instrumentID()
         self._write_dds_fct_trigger(es_flow_topic, task, sequencer_instrumentID, flow_xml)
 
+    @Pyro4.oneway
     def client_pyro_update_command_status(self, transactionID):
         """this is a method for the Edge_Client, it is what the client uses to update the completed """
         logging.debug(f"{datetime.datetime.now()}-> Client connected to Sequencer through pyro")
@@ -391,7 +364,6 @@ class Session(Edge_Sequencer):
 
         while self._kill_all_threads.is_set():
             while len(self.finished_tasks) != self.num_tasks:
-                self.immadiate_stop_flag.wait()
                 with self.running_tasks_lock:
                     for task in self.running_tasks:
                         if len(task.done_commands) == task.num_commands:
@@ -414,9 +386,15 @@ class Session(Edge_Sequencer):
 
             try:
                 self._kill_all_threads.clear()
+                self._close_pyro_connection()
+                self.pyro_thread.join()
+                self.consumer_thread.join()
+                self.producer_thread.join()
                 self._closing_connectors()
+                logging.debug(f"{datetime.datetime.now()}-> Session is over...")
             except Exception as err:
                 logging.debug(f"{err}")
+        return 0
 
     def _check_modules(self, command):
 
@@ -432,46 +410,14 @@ class Session(Edge_Sequencer):
     def _send_out_whole_task_to_msct(self, task, command_xml: str):
         """it sends out every command in the given task"""
 
-        direct_control_timeout = self.get_direct_control_timeout()
         if task.waitMode == "WaitBefore":
             logging.debug(f"{datetime.datetime.now()}-> WaitBefore task, waiting for {task.waitTime}s")
             time.sleep(task.waitTime)
 
         for command in task.all_commands:
-            # todo probably deprecated part, the action kind is evaluated at the client side
-            # try:
-            #     if command.action_kind == actionKind.task_control:
-            #
-            #         module = self._check_modules(command)
-            #         self.write_command_topic(command, module, command_xml)
-            #
-            #     elif command.action_kind == actionKind.direct_control:
-            #
-            #         module = self._check_modules(command)
-            #         self.write_command_topic(command, module, command_xml)
-            #         direct_command_returned = command.command_done_flag.wait(timeout=direct_control_timeout)
-            #         if direct_command_returned:
-            #             command.command_done_flag.clear()
-            #         else:
-            #             raise directCommandError(task, command)
-
             #it always takes the first element, the Client pops the command element from the list
             module = self._check_modules(command)
-            try:
-                self.write_command_topic(command, module, command_xml)
-
-            except directCommandError as err:
-                self.immadiate_stop_flag.clear()
-                logging.debug(f"{datetime.datetime.now()}--> {err}")
-                continue_flag = input("Direct Control Command haven't returned in time."
-                                      "Continue anyway? If no, Edge_Sequencer stops.(y/n)\n")
-                if continue_flag == "y" or continue_flag == "y\n":
-                    self.immadiate_stop_flag.set()
-                    command.command_done_flag.clear()
-                else:
-                    # self._kill_all_threads is dangerous, it stops all the threads (producer, consumer, main)
-                    logging.debug("Killing all threads....")
-                    self._kill_all_threads.clear()
+            self.write_command_topic(command, module, command_xml)
 
     def _parse_command_xml_command_topic(self, command_xml):
 
@@ -499,11 +445,6 @@ class Session(Edge_Sequencer):
                     for publisher in element["publisher"]:
                         data_writer.update({publisher['@name']: publisher['data_writer']})
 
-
-
-
-        #print(data_reader)
-        #print(data_writer)
 
         return {"data_writers": data_writer, "data_readers": data_reader}
 
@@ -539,16 +480,12 @@ class Session(Edge_Sequencer):
 
                     logging.debug(f"Matched subs:{len(output.matched_subscriptions)}")
                     if len(output.matched_subscriptions) == 0:
-                        logging.debug(f"Matched subs:{len(output.matched_subscriptions)}")
+                        logging.debug(f"{datetime.datetime.now()}--> Waiting for subs, currently 0")
                         output.wait_for_subscriptions()
 
                     output.instance.set_dictionary(data_dict)
                     logging.debug(f"{datetime.datetime.now()}-> sending out command: {command.transactionID}")
                     output.write()
-                    #todo probably deprecated
-                    #self.wait_for_read_ack_msct.wait()
-                    #output.clear_members()
-                    #self.wait_for_read_ack_msct.clear()
 
                 except Exception as err:
                     logging.critical(err)
@@ -559,9 +496,6 @@ class Session(Edge_Sequencer):
             return 0
 
 
-#todo: probably deprecated
-    # def pyro_msct_ack_set(self):
-    #     self.wait_for_read_ack_msct.set()
 
     def _create_writer_data_for_module_command_topic(self, module, command):
         """creates a data structure that is compatable with the dds topic"""
@@ -587,15 +521,24 @@ class Session(Edge_Sequencer):
         else:
             return_dictionary = {}
             connector = self.get_fct_read_connector()
-        while True:
+            read_timeout_tries = True
+            #read_timeout_tries decrases every time when _fct_read_connector.wait times out
+        while read_timeout_tries:
             try:
                 input_connector = connector.get_input(f"{es_flow_topic}Sub::MyReader{es_flow_topic}")
-                self._fct_read_connector.wait()  # waiting for data
+                self._fct_read_connector.wait(timeout=5000)  # waiting for data
                 input_connector.take()  # taking in the data
                 logging.debug(f"{datetime.datetime.now()}-> Input taken on fct")
 
                 for sample in input_connector.samples.valid_data_iter:
                     return_dictionary.update(sample.get_dictionary())
+            except rti.TimeoutError:
+                logging.debug(f"{datetime.datetime.now()}-> Fct reading timed out ")
+                if self._kill_all_threads.is_set():
+                    logging.debug(f"{datetime.datetime.now()}-> Threads are still alive, continuing....")
+                    continue
+                else:
+                    read_timeout_tries = False
             except:
                 continue
             else:
@@ -714,10 +657,6 @@ class Task:
         if command_transactionID in transactionIDs and len(transactionIDs) != 0:
             index = transactionIDs.index(command_transactionID)
             command = self.commands.pop(index)
-            #probabbly deprecated
-            #if actionKind(command.action_kind) == actionKind.direct_control:
-            #    command.command_done_flag.set()
-
             self.done_commands.append(command)
 
 
@@ -736,21 +675,6 @@ class Command:
             self.mscd["Mode"] = MSCD_mode[self.mscd["Mode"]]
             self.mscd["Mode"] = self.mscd["Mode"].value
 
-            #probably action kind is deprecated
-            # if self.action_kind == actionKind.direct_control:
-            #     self.command_done_flag = threading.Event()
-            #     self.command_done_flag.clear()
-
-
-        #this part might get deleted
-        #self.params = {}
-
-        # for key, value in command_dict.items():
-        #
-        #     if key not in ["moduleID", "transactionID", "Action_kind", "Priority"]:
-        #         self.params.update({key: value})
-
-
 class Module:
 
     def __init__(self, module_dict):
@@ -763,12 +687,10 @@ class Module:
         return f"{self.uniqueID}: {self.moduleID}"
 
 
-
-
 if __name__ == "__main__":
 
     logging.basicConfig(level=logging.DEBUG)
-    testS = Session(r"data\xmls\tasklistDummy.xml")
+    testS = Session(TASKLIST)
     inID = testS.get_instrumentID()
     command = testS.tasks[0].commands[0]
     module = testS.get_module_list()[-1]
@@ -781,5 +703,4 @@ if __name__ == "__main__":
     task = Task(xml_dict["Tasks"]["Task"])
     spinStudio = threading.Timer(interval=1, function=testS.spin_studio_demo_MAGIC, args=(task, inID,))
     spinStudio.start()
-#
     testS.session_run()

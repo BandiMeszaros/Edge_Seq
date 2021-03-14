@@ -1,7 +1,10 @@
 MODULELIST = r"data/xmls/modulelistDummy.xml"
 COMMANDXML = r"data\xmls\DDS_commands.xml"
 FLOWXML = r"data\xmls\DDS_flow.xml"
+TASKLIST = r"data\xmls\tasklistDummy.xml"
 CONFIG_PUB = "MyParticipantLibrary::MyPublishers"
 CONFIG_SUB = "MyParticipantLibrary::MySubscribers"
 ES_FCT = "ES_TriggerWarning"
 DC_TIMEOUT = 1500
+PYRO_NS_IP = "PYRO:Pyro.NameServer@localhost:9090"
+SEQ_IP = "localhost"
