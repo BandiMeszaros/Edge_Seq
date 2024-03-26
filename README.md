@@ -5,4 +5,4 @@ The project is not complete it misses the data folder, therefore demostration is
 
 ## About the project
 
-The project was my masters degree thesis work.
+The project was made for my masters degree thesis work.
